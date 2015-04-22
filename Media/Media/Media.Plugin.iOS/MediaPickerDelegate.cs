@@ -254,6 +254,15 @@ namespace Media.Plugin
 			if (image == null)
 				image = (UIImage)info[UIImagePickerController.OriginalImage];
 
+            // get the metadata
+            var metadata = image.ValueForKey(new NSString("UIImagePickerControllerMediaMetadata")) as NSDictionary;
+
+            ALAssetsLibrary library = new ALAssetsLibrary();
+            library.WriteImageToSavedPhotosAlbum(image.CGImage, metadata, (assetUrl, error) =>
+            {
+                Console.WriteLine("assetUrl:" + assetUrl);
+            });
+
 			string path = GetOutputPath (MediaImplementation.TypeImage,
 				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
 				options.Name);
