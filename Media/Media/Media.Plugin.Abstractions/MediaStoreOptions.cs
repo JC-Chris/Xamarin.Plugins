@@ -47,6 +47,12 @@ namespace Media.Plugin.Abstractions
       get;
       set;
     }
+
+        public bool SaveToCameraRoll
+        {
+            get;
+            set;
+        }
   }
 
   /// <summary>

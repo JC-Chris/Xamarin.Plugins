@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://xamarin.com/schemas/2014/forms"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:XamFormsTest;assembly=XamFormsTest"
+             x:Class="XamFormsTest.PhotoMediaTestPage">
+
+  <ContentPage.Content>
+    <StackLayout Padding="20" HorizontalOptions="FillAndExpand" VerticalOptions="FillAndExpand">
+      <Image Source="{Binding SelectedImage}" BackgroundColor="Black" Aspect="AspectFit" HeightRequest="200" WidthRequest="200" VerticalOptions="StartAndExpand" />
+      <Button Text="Use existing photo" VerticalOptions="End" BackgroundColor="#CCCCCC" Command="{Binding ChoosePicCommand}" />
+      <Button Text="Use camera" VerticalOptions="End" BackgroundColor="#CCCCCC" Command="{Binding TakePicCommand}" />
+    </StackLayout>
+  </ContentPage.Content>
+
+  <ContentPage.BindingContext>
+    <vm:PhotoTestVM />
+  </ContentPage.BindingContext>
+</ContentPage>

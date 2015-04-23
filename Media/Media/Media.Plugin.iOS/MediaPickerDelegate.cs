@@ -69,13 +69,13 @@ namespace Media.Plugin
 			get { return tcs.Task; }
 		}
 
-		public override void FinishedPickingMedia (UIImagePickerController picker, NSDictionary info)
+		public override async void FinishedPickingMedia (UIImagePickerController picker, NSDictionary info)
 		{
 			MediaFile mediaFile;
 			switch ((NSString)info[UIImagePickerController.MediaType])
 			{
         case MediaImplementation.TypeImage:
-					mediaFile = GetPictureMediaFile (info);
+					mediaFile = await GetPictureMediaFileAsync (info);
 					break;
 
         case MediaImplementation.TypeMovie:
@@ -248,27 +248,54 @@ namespace Media.Plugin
 			return this.viewController.GetSupportedInterfaceOrientations().HasFlag (mask);
 		}
 
-		private MediaFile GetPictureMediaFile (NSDictionary info)
+		private async Task<MediaFile> GetPictureMediaFileAsync (NSDictionary info)
 		{
 			var image = (UIImage)info[UIImagePickerController.EditedImage];
 			if (image == null)
 				image = (UIImage)info[UIImagePickerController.OriginalImage];
 
-            // get the metadata
-            var metadata = image.ValueForKey(new NSString("UIImagePickerControllerMediaMetadata")) as NSDictionary;
-
-            ALAssetsLibrary library = new ALAssetsLibrary();
-            library.WriteImageToSavedPhotosAlbum(image.CGImage, metadata, (assetUrl, error) =>
+            var library = new ALAssetsLibrary();
+            NSDictionary metadata = null;
+            var metaDataTCS = new TaskCompletionSource<NSDictionary>();
+            if (this.source == UIImagePickerControllerSourceType.Camera)
             {
-                Console.WriteLine("assetUrl:" + assetUrl);
-            });
+                // user took a picture
+                // get the metadata
+                metaDataTCS.SetResult(info[UIImagePickerController.MediaMetadata] as NSDictionary);
+
+                // if saving to the camera roll, do so with all the metadata
+                if (options.SaveToCameraRoll)
+                {
+                    library.WriteImageToSavedPhotosAlbum(image.CGImage, metadata, (assetUrl, error) =>
+                        {
+                            // any additional processing can go here
+                        });
+                }
+            }
+            else
+            {
+                // user selected an existing image
+                // use the asset url to get the metadata
+                var assetUrl = info[UIImagePickerController.ReferenceUrl] as NSUrl;
+                library.AssetForUrl(
+                    assetUrl,
+                    (asset) => metaDataTCS.SetResult(asset.DefaultRepresentation.Metadata), 
+                    (error) => metaDataTCS.SetException(new Exception(error.LocalizedFailureReason))
+                );
+            }
 
 			string path = GetOutputPath (MediaImplementation.TypeImage,
 				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
 				options.Name);
+            
+            var jpegImage = image.AsJPEG();
+            metadata = await metaDataTCS.Task.ConfigureAwait(false);
+            if (metadata != null && metadata.Count > 0)
+                // getting an error here - looks like some of the metadata is not valid for a jpeg
+                jpegImage.SetValuesForKeysWithDictionary(metadata);
 
 			using (FileStream fs = File.OpenWrite (path))
-			using (Stream s = new NSDataStream (image.AsJPEG()))
+            using (Stream s = new NSDataStream (jpegImage))
 			{
 				s.CopyTo (fs);
 				fs.Flush();
