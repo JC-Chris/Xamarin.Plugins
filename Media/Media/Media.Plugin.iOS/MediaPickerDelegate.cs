@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using Media.Plugin.Abstractions;
+using System.Runtime.InteropServices;
 
 #if __UNIFIED__
 using CoreGraphics;
@@ -255,57 +256,87 @@ namespace Media.Plugin
 				image = (UIImage)info[UIImagePickerController.OriginalImage];
 
             var library = new ALAssetsLibrary();
-            NSDictionary metadata = null;
-            var metaDataTCS = new TaskCompletionSource<NSDictionary>();
+            var assetUrlTCS = new TaskCompletionSource<NSUrl>();
             if (this.source == UIImagePickerControllerSourceType.Camera)
             {
                 // user took a picture
                 // get the metadata
-                metaDataTCS.SetResult(info[UIImagePickerController.MediaMetadata] as NSDictionary);
+                var metadata = info[UIImagePickerController.MediaMetadata] as NSDictionary;
 
-                // if saving to the camera roll, do so with all the metadata
-                if (options.SaveToCameraRoll)
-                {
-                    library.WriteImageToSavedPhotosAlbum(image.CGImage, metadata, (assetUrl, error) =>
-                        {
-                            // any additional processing can go here
-                        });
-                }
+                // save to camera roll with metadata
+                library.WriteImageToSavedPhotosAlbum(image.CGImage, metadata, (newAssetUrl, error) =>
+                    {
+                        // any additional processing can go here
+                        if (error == null)
+                            assetUrlTCS.SetResult(newAssetUrl);
+                        else
+                            assetUrlTCS.SetException(new Exception(error.LocalizedFailureReason));
+                    });
             }
             else
             {
-                // user selected an existing image
-                // use the asset url to get the metadata
-                var assetUrl = info[UIImagePickerController.ReferenceUrl] as NSUrl;
-                library.AssetForUrl(
-                    assetUrl,
-                    (asset) => metaDataTCS.SetResult(asset.DefaultRepresentation.Metadata), 
-                    (error) => metaDataTCS.SetException(new Exception(error.LocalizedFailureReason))
-                );
+                // get the assetUrl for the selected image
+                assetUrlTCS.SetResult(info[UIImagePickerController.ReferenceUrl] as NSUrl);
             }
 
-			string path = GetOutputPath (MediaImplementation.TypeImage,
-				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
-				options.Name);
-            
-            var jpegImage = image.AsJPEG();
-            metadata = await metaDataTCS.Task.ConfigureAwait(false);
-            if (metadata != null && metadata.Count > 0)
-                // getting an error here - looks like some of the metadata is not valid for a jpeg
-                jpegImage.SetValuesForKeysWithDictionary(metadata);
+            // get the default representation of the asset
+            var dRepTCS = new TaskCompletionSource<ALAssetRepresentation>();
+            var assetUrl = await assetUrlTCS.Task.ConfigureAwait(false);
+            library.AssetForUrl(
+                assetUrl,
+                (asset) => dRepTCS.SetResult(asset.DefaultRepresentation), 
+                (error) => dRepTCS.SetException(new Exception(error.LocalizedFailureReason))
+            );
+            var rep = await dRepTCS.Task.ConfigureAwait(false);
 
-			using (FileStream fs = File.OpenWrite (path))
-            using (Stream s = new NSDataStream (jpegImage))
-			{
-				s.CopyTo (fs);
-				fs.Flush();
-			}
+            // now some really ugly code to copy that as a byte array
+            var size = (uint)rep.Size;
+            //byte[] imgData = new byte[size];
+            IntPtr buffer = Marshal.AllocHGlobal((int)size);
+            NSError bError;
+            rep.GetBytes(buffer, 0, (uint)size, out bError);
+            //Marshal.Copy(buffer, imgData, 0, imgData.Length);
+            var imgData = NSData.FromBytes(buffer, (uint)size);
+            Marshal.FreeHGlobal(buffer);
 
-			Action<bool> dispose = null;
-			if (this.source != UIImagePickerControllerSourceType.Camera)
-				dispose = d => File.Delete (path);
+            string path = GetOutputPath (MediaImplementation.TypeImage,
+                options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
+                options.Name);
+            using (FileStream fs = File.OpenWrite (path))
+            using (Stream s = new NSDataStream (imgData))
+            {
+              s.CopyTo (fs);
+              fs.Flush();
+            }
 
-			return new MediaFile (path, () => File.OpenRead (path), dispose: dispose);
+            Action<bool> dispose = null;
+            if (this.source != UIImagePickerControllerSourceType.Camera)
+              dispose = d => File.Delete (path);
+
+            return new MediaFile (path, () => File.OpenRead (path), dispose: dispose);
+
+//			string path = GetOutputPath (MediaImplementation.TypeImage,
+//				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
+//				options.Name);
+//            
+//            var jpegImage = image.AsJPEG();
+//            metadata = await metaDataTCS.Task.ConfigureAwait(false);
+//            if (metadata != null && metadata.Count > 0)
+//                // getting an error here - looks like some of the metadata is not valid for a jpeg
+//                jpegImage.SetValuesForKeysWithDictionary(metadata);
+
+//			using (FileStream fs = File.OpenWrite (path))
+//            using (Stream s = new NSDataStream (jpegImage))
+//			{
+//				s.CopyTo (fs);
+//				fs.Flush();
+//			}
+//
+//			Action<bool> dispose = null;
+//			if (this.source != UIImagePickerControllerSourceType.Camera)
+//				dispose = d => File.Delete (path);
+//
+//			return new MediaFile (path, () => File.OpenRead (path), dispose: dispose);
 		}
 
 		private MediaFile GetMovieMediaFile (NSDictionary info)
