@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 
 using Media.Plugin.Abstractions;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 #if __UNIFIED__
 using CoreGraphics;
@@ -28,6 +29,8 @@ using AssetsLibrary;
 using Foundation;
 using UIKit;
 using NSAction = global::System.Action;
+using CoreLocation;
+using ImageIO;
 #else
 using MonoTouch.AssetsLibrary;
 using MonoTouch.Foundation;
@@ -75,11 +78,11 @@ namespace Media.Plugin
 			MediaFile mediaFile;
 			switch ((NSString)info[UIImagePickerController.MediaType])
 			{
-        case MediaImplementation.TypeImage:
+                case MediaImplementation.TypeImage:
 					mediaFile = await GetPictureMediaFileAsync (info);
 					break;
 
-        case MediaImplementation.TypeMovie:
+                case MediaImplementation.TypeMovie:
 					mediaFile = GetMovieMediaFile (info);
 					break;
 
@@ -262,9 +265,16 @@ namespace Media.Plugin
                 // user took a picture
                 // get the metadata
                 var metadata = info[UIImagePickerController.MediaMetadata] as NSDictionary;
+                var newMetadata = new NSMutableDictionary(metadata);
+                if (!newMetadata.ContainsKey(ImageIO.CGImageProperties.GPSDictionary))
+                {
+                    var gpsData = await BuildGPSDataAsync();
+                    if (gpsData != null)
+                        newMetadata.Add(ImageIO.CGImageProperties.GPSDictionary, gpsData);
+                }
 
                 // save to camera roll with metadata
-                library.WriteImageToSavedPhotosAlbum(image.CGImage, metadata, (newAssetUrl, error) =>
+                library.WriteImageToSavedPhotosAlbum(image.CGImage, newMetadata, (newAssetUrl, error) =>
                     {
                         // any additional processing can go here
                         if (error == null)
@@ -338,6 +348,68 @@ namespace Media.Plugin
 //
 //			return new MediaFile (path, () => File.OpenRead (path), dispose: dispose);
 		}
+
+        CLLocationManager _locationManager;
+        TaskCompletionSource<CLLocation> _locationTCS;
+        private async Task<NSDictionary> BuildGPSDataAsync()
+        {
+            // setup the location manager and make it highly accurate
+            if (_locationManager == null)
+            {
+                _locationManager = new CLLocationManager();
+                _locationManager.DesiredAccuracy = 1;
+            }
+
+            // setup a task for getting the current location and a callback for receiving the location
+            _locationTCS = new TaskCompletionSource<CLLocation>();
+            _locationManager.LocationsUpdated += (sender, locationArgs) =>
+                {
+                    if (locationArgs.Locations.Length > 0)
+                    {
+                        _locationManager.StopUpdatingLocation();
+                        _locationTCS.SetResult(locationArgs.Locations[locationArgs.Locations.Length - 1]);
+                    }
+                };
+            // start location monitoring
+            _locationManager.StartUpdatingLocation();
+
+            // create a timeout and location task to ensure we don't wait forever
+            var timeoutTask = System.Threading.Tasks.Task.Delay(5000); // 5 second wait
+            var locationTask = _locationTCS.Task;
+
+            // setup a date formatter
+            var dateFormatter = new NSDateFormatter();
+            dateFormatter.TimeZone = new NSTimeZone("UTC");
+            dateFormatter.DateFormat = "HH:mm:ss.SS";
+
+            // try and set a location based on whatever task ends first
+            CLLocation location;
+            var completeTask = await System.Threading.Tasks.Task.WhenAny(locationTask, timeoutTask);
+            if (completeTask == locationTask && completeTask.Status == TaskStatus.RanToCompletion)
+            {
+                // use the location result
+                location = locationTask.Result;
+            }
+            else
+            {
+                // timeout - stop the location manager and try and use the last location
+                _locationManager.StopUpdatingLocation();
+                location = _locationManager.Location;
+            }
+
+            if (location == null)
+                return null;
+            
+            var gpsData = new NSDictionary(
+                ImageIO.CGImageProperties.GPSLatitude, Math.Abs(location.Coordinate.Latitude),
+                ImageIO.CGImageProperties.GPSLatitudeRef, (location.Coordinate.Latitude >= 0) ? "N" : "S",
+                ImageIO.CGImageProperties.GPSLongitude, Math.Abs(location.Coordinate.Longitude),
+                ImageIO.CGImageProperties.GPSLongitudeRef, (location.Coordinate.Longitude >= 0) ? "E" : "W",
+                ImageIO.CGImageProperties.GPSTimeStamp, dateFormatter.StringFor(location.Timestamp),
+                ImageIO.CGImageProperties.GPSAltitude, Math.Abs(location.Altitude)
+            );
+            return gpsData;
+        }
 
 		private MediaFile GetMovieMediaFile (NSDictionary info)
 		{
