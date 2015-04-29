@@ -756,6 +756,9 @@ Global
 		{05DC0BE6-95BE-44AB-BF70-5042DBEA9EED} = {1B887440-B018-40E3-8BCF-2DE7163C4F8C}
 		{BBE7605A-1130-4EC3-AE16-5F682F33CABE} = {1B887440-B018-40E3-8BCF-2DE7163C4F8C}
 	EndGlobalSection
+	GlobalSection(MonoDevelopProperties) = preSolution
+		version = 0.2
+	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		MediaTest\MediaTest.Shared\MediaTest.Shared.projitems*{99603c24-247b-4be8-8642-0775f1dd095b}*SharedItemsImports = 13
 		MediaTest\MediaTest.Shared\MediaTest.Shared.projitems*{44ccd146-cfc0-4abe-8c61-b7c160f3b306}*SharedItemsImports = 4
