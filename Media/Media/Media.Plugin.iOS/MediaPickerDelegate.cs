@@ -309,21 +309,7 @@ namespace Media.Plugin
             var imgData = NSData.FromBytes(buffer, (uint)size);
             Marshal.FreeHGlobal(buffer);
 
-            string path = GetOutputPath (MediaImplementation.TypeImage,
-                options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
-                options.Name);
-            using (FileStream fs = File.OpenWrite (path))
-            using (Stream s = new NSDataStream (imgData))
-            {
-              s.CopyTo (fs);
-              fs.Flush();
-            }
-
-            Action<bool> dispose = null;
-            if (this.source != UIImagePickerControllerSourceType.Camera)
-              dispose = d => File.Delete (path);
-
-            return new MediaFile (path, () => File.OpenRead (path), dispose: dispose);
+		    return new MediaFile(assetUrl.ToString(), imgData.AsStream);
 
 //			string path = GetOutputPath (MediaImplementation.TypeImage,
 //				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
