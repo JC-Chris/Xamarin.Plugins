@@ -33,10 +33,11 @@ namespace Media.Plugin.Abstractions
     /// <param name="streamGetter"></param>
     /// <param name="deletePathOnDispose"></param>
     /// <param name="dispose"></param>
-    public MediaFile(string path, Func<Stream> streamGetter, bool deletePathOnDispose = false, Action<bool> dispose = null)
+    public MediaFile(string name, string path, Func<Stream> streamGetter, bool deletePathOnDispose = false, Action<bool> dispose = null)
     {
       this.dispose = dispose;
       this.streamGetter = streamGetter;
+      this.name = name;
       this.path = path;
       this.deletePathOnDispose =  deletePathOnDispose;
     }
@@ -52,6 +53,18 @@ namespace Media.Plugin.Abstractions
 
         return this.path;
       }
+    }
+    /// <summary>
+    /// The local file name on the system.
+    /// </summary>
+    public string FileName
+    {
+        get
+        {
+            if (this.isDisposed)
+                throw new ObjectDisposedException(null);
+            return this.name;
+        }
     }
     /// <summary>
     /// Get stream if available
@@ -78,6 +91,7 @@ namespace Media.Plugin.Abstractions
     private readonly Func<Stream> streamGetter;
     private readonly string path;
     private readonly bool deletePathOnDispose;
+    private readonly string name;
 
     private void Dispose(bool disposing)
     {

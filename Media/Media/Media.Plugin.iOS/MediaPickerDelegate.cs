@@ -309,7 +309,7 @@ namespace Media.Plugin
             var imgData = NSData.FromBytes(buffer, (uint)size);
             Marshal.FreeHGlobal(buffer);
 
-		    return new MediaFile(assetUrl.ToString(), imgData.AsStream);
+            return new MediaFile(rep.Filename, assetUrl.ToString(), imgData.AsStream);
 
 //			string path = GetOutputPath (MediaImplementation.TypeImage,
 //				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
@@ -401,9 +401,10 @@ namespace Media.Plugin
 		{
 			NSUrl url = (NSUrl)info[UIImagePickerController.MediaURL];
 
-      string path = GetOutputPath(MediaImplementation.TypeMovie,
-				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
-				this.options.Name ?? Path.GetFileName (url.Path));
+            string name = this.options.Name ?? Path.GetFileName(url.Path);
+          string path = GetOutputPath(MediaImplementation.TypeMovie,
+    				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
+    				this.options.Name ?? Path.GetFileName (url.Path));
 
 			File.Move (url.Path, path);
 
@@ -411,7 +412,7 @@ namespace Media.Plugin
 			if (this.source != UIImagePickerControllerSourceType.Camera)
 				dispose = d => File.Delete (path);
 
-			return new MediaFile (path, () => File.OpenRead (path), dispose: dispose);
+			return new MediaFile (name, path, () => File.OpenRead (path), dispose: dispose);
 		}
 		
 		private static string GetUniquePath (string type, string path, string name)
