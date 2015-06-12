@@ -22,7 +22,8 @@ using System.Threading.Tasks;
 using Media.Plugin.Abstractions;
 using System.Runtime.InteropServices;
 using System.Threading;
-
+using CoreImage;
+using Photos;
 #if __UNIFIED__
 using CoreGraphics;
 using AssetsLibrary;
@@ -289,27 +290,56 @@ namespace Media.Plugin
                 assetUrlTCS.SetResult(info[UIImagePickerController.ReferenceUrl] as NSUrl);
             }
 
-            // get the default representation of the asset
-            var dRepTCS = new TaskCompletionSource<ALAssetRepresentation>();
-            var assetUrl = await assetUrlTCS.Task.ConfigureAwait(false);
-            library.AssetForUrl(
-                assetUrl,
-                (asset) => dRepTCS.SetResult(asset.DefaultRepresentation), 
-                (error) => dRepTCS.SetException(new Exception(error.LocalizedFailureReason))
-            );
-            var rep = await dRepTCS.Task.ConfigureAwait(false);
+		    if (UIDevice.CurrentDevice.CheckSystemVersion(8, 0))
+		    {
+                var assetUrl = await assetUrlTCS.Task.ConfigureAwait(false);
+                var assets = PHAsset.FetchAssets(new NSUrl[] { assetUrl }, null);
+		        if (assets.Count == 0)
+		            throw new NullReferenceException("Unable to find the specified asset.");
+		        var asset = (PHAsset)assets[0];
+                var imgMgr = new PHImageManager();
 
-            // now some really ugly code to copy that as a byte array
-            var size = (uint)rep.Size;
-            //byte[] imgData = new byte[size];
-            IntPtr buffer = Marshal.AllocHGlobal((int)size);
-            NSError bError;
-            rep.GetBytes(buffer, 0, (uint)size, out bError);
-            //Marshal.Copy(buffer, imgData, 0, imgData.Length);
-            var imgData = NSData.FromBytes(buffer, (uint)size);
-            Marshal.FreeHGlobal(buffer);
+                var imgTCS = new TaskCompletionSource<NSData>();
+		        var imageName = "Unknown";
+		        imgMgr.RequestImageData(asset, null, (data, uti, imageOrientation, dictionary) =>
+		        {
+		            var fileUrl = dictionary["PHImageFileURLKey"].ToString();
+		            if (!string.IsNullOrWhiteSpace(fileUrl))
+		            {
+		                var slash = fileUrl.LastIndexOf('/');
+		                if (slash > -1)
+		                    imageName = fileUrl.Substring(slash + 1);
+		            }
+		            imgTCS.SetResult(data);
+		        });
 
-            return new MediaFile(rep.Filename, assetUrl.ToString(), imgData.AsStream);
+		        var img = await imgTCS.Task.ConfigureAwait(false);
+		        return new MediaFile(imageName, assetUrl.ToString(), () => img.AsStream(), true);
+		    }
+		    else
+		    {
+                // get the default representation of the asset
+                var dRepTCS = new TaskCompletionSource<ALAssetRepresentation>();
+                var assetUrl = await assetUrlTCS.Task.ConfigureAwait(false);
+                library.AssetForUrl(
+                    assetUrl,
+                    (asset) => dRepTCS.SetResult(asset.DefaultRepresentation),
+                    (error) => dRepTCS.SetException(new Exception(error.LocalizedFailureReason))
+                );
+                var rep = await dRepTCS.Task.ConfigureAwait(false);
+
+                // now some really ugly code to copy that as a byte array
+                var size = (uint)rep.Size;
+                //byte[] imgData = new byte[size];
+                IntPtr buffer = Marshal.AllocHGlobal((int)size);
+                NSError bError;
+                rep.GetBytes(buffer, 0, (uint)size, out bError);
+                //Marshal.Copy(buffer, imgData, 0, imgData.Length);
+                var imgData = NSData.FromBytes(buffer, (uint)size);
+                Marshal.FreeHGlobal(buffer);
+
+                return new MediaFile(rep.Filename, assetUrl.ToString(), imgData.AsStream);
+		    }
 
 //			string path = GetOutputPath (MediaImplementation.TypeImage,
 //				options.Directory ?? ((IsCaptured) ? String.Empty : "temp"),
@@ -339,11 +369,11 @@ namespace Media.Plugin
         TaskCompletionSource<CLLocation> _locationTCS;
         private async Task<NSDictionary> BuildGPSDataAsync()
         {
-            // setup the location manager and make it highly accurate
+            // setup the location manager
             if (_locationManager == null)
             {
                 _locationManager = new CLLocationManager();
-                _locationManager.DesiredAccuracy = 1;
+                _locationManager.DesiredAccuracy = 30; // in meters
             }
 
             // setup a task for getting the current location and a callback for receiving the location
