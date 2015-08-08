@@ -185,7 +185,8 @@ namespace Media.Plugin
 				string resultPath = t.Result.Item1;
 				if (resultPath != null && File.Exists (t.Result.Item1)) 
         {
-          var mf = new MediaFile(resultPath, () =>
+                    var name = resultPath.Substring(resultPath.LastIndexOf("/"));
+          var mf = new MediaFile(name, resultPath, () =>
             {
               return File.OpenRead(resultPath);
             }, deletePathOnDispose: t.Result.Item2, dispose: (dis) =>
