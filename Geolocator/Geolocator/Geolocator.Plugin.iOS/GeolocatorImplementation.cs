@@ -29,7 +29,7 @@ using MonoTouch.Foundation;
 using MonoTouch.UIKit;
 #endif
 using Geolocator.Plugin.Abstractions;
-
+    
 
 namespace Geolocator.Plugin
 {
