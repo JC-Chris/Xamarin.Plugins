@@ -373,7 +373,9 @@ namespace Media.Plugin
             if (_locationManager == null)
             {
                 _locationManager = new CLLocationManager();
-                _locationManager.DesiredAccuracy = 30; // in meters
+                if (UIDevice.CurrentDevice.CheckSystemVersion(8, 0))
+                    _locationManager.RequestWhenInUseAuthorization();
+                _locationManager.DesiredAccuracy = 1; // in meters
             }
 
             // setup a task for getting the current location and a callback for receiving the location
@@ -392,11 +394,6 @@ namespace Media.Plugin
             // create a timeout and location task to ensure we don't wait forever
             var timeoutTask = System.Threading.Tasks.Task.Delay(5000); // 5 second wait
             var locationTask = _locationTCS.Task;
-
-            // setup a date formatter
-            var dateFormatter = new NSDateFormatter();
-            dateFormatter.TimeZone = new NSTimeZone("UTC");
-            dateFormatter.DateFormat = "HH:mm:ss.SS";
 
             // try and set a location based on whatever task ends first
             CLLocation location;
@@ -421,8 +418,9 @@ namespace Media.Plugin
                 ImageIO.CGImageProperties.GPSLatitudeRef, (location.Coordinate.Latitude >= 0) ? "N" : "S",
                 ImageIO.CGImageProperties.GPSLongitude, Math.Abs(location.Coordinate.Longitude),
                 ImageIO.CGImageProperties.GPSLongitudeRef, (location.Coordinate.Longitude >= 0) ? "E" : "W",
-                ImageIO.CGImageProperties.GPSTimeStamp, dateFormatter.StringFor(location.Timestamp),
-                ImageIO.CGImageProperties.GPSAltitude, Math.Abs(location.Altitude)
+                ImageIO.CGImageProperties.GPSAltitude, Math.Abs(location.Altitude),
+                ImageIO.CGImageProperties.GPSDateStamp, DateTime.UtcNow.ToString("yyyy:MM:dd"),
+                ImageIO.CGImageProperties.GPSTimeStamp, DateTime.UtcNow.ToString("HH:mm:ss.ff")
             );
             return gpsData;
         }
